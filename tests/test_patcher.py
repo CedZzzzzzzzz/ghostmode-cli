@@ -29,3 +29,10 @@ def test_rejects_a_replacement_for_the_wrong_function() -> None:
     assert matches_target_function("def divide(a, b):\n    return a / b\n", "divide", ".py")
     assert not matches_target_function("def add(a, b):\n    return a - b\n", "divide", ".py")
     assert not matches_target_function("def divide(a, b):\n    return a / b\n\ndef add(a, b):\n    return a + b\n", "divide", ".py")
+
+
+def test_diff_marks_added_and_removed_lines() -> None:
+    diff = FilePatcher().diff("value = 1\n", "value = 2\n")
+    assert diff.plain == "--- before\n+++ after\n@@ -1 +1 @@\n-value = 1\n+value = 2\n"
+    assert any(span.style == "red" for span in diff.spans)
+    assert any(span.style == "green" for span in diff.spans)

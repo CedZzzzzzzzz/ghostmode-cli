@@ -10,6 +10,8 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
 
+from rich.text import Text
+
 from .errors import PatchError
 from .parser import FunctionSpan
 
@@ -113,8 +115,24 @@ class FilePatcher:
     def cleanup(self, file_path: Path) -> None:
         file_path.with_name(file_path.name + ".ghost_bak").unlink(missing_ok=True)
 
-    def diff(self, original: str, patched: str) -> str:
-        return "".join(difflib.unified_diff(original.splitlines(True), patched.splitlines(True), fromfile="before", tofile="after"))
+    def diff(self, original: str, patched: str) -> Text:
+        diff = Text()
+        for line in difflib.unified_diff(
+            original.splitlines(True),
+            patched.splitlines(True),
+            fromfile="before",
+            tofile="after",
+        ):
+            if line.startswith("+") and not line.startswith("+++"):
+                style = "green"
+            elif line.startswith("-") and not line.startswith("---"):
+                style = "red"
+            elif line.startswith("@@"):
+                style = "cyan"
+            else:
+                style = "dim"
+            diff.append(line, style=style)
+        return diff
 
     @contextmanager
     def session(self, file_path: Path) -> Iterator[None]:
