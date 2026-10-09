@@ -16,6 +16,12 @@ ollama pull qwen2.5-coder:1.5b
 ghostmode doctor
 ```
 
+To upgrade an existing installation:
+
+```bash
+pip install --upgrade ghostmode-cli
+```
+
 Run GhostMode from the project you want to repair:
 
 ```bash
