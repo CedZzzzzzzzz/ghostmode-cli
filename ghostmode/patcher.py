@@ -26,11 +26,10 @@ def validate_code(code: str, suffix: str) -> bool:
     if suffix.lower() == ".py":
         return validate_python(code)
     normalized_suffix = suffix.lower()
-    if not code.strip() or normalized_suffix not in {".js", ".mjs", ".cjs", ".jsx", ".ts", ".tsx", ".php", ".rs"}:
+    if not code.strip() or normalized_suffix not in {".js", ".mjs", ".cjs", ".jsx", ".ts", ".tsx", ".php"}:
         return False
     declarations = {
         ".php": r"\bfunction\s+[A-Za-z_]\w*",
-        ".rs": r"\bfn\s+[A-Za-z_]\w*",
     }
     declaration = declarations.get(normalized_suffix, r"\bfunction\s+[A-Za-z_$][\w$]*|=>")
     if re.search(declaration, code) is None:
@@ -53,9 +52,7 @@ def matches_target_function(code: str, function_name: str, suffix: str) -> bool:
             return False
         functions = [node.name for node in tree.body if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))]
         return functions == [function_name]
-    if suffix.lower() == ".rs":
-        names = re.findall(r"\bfn\s+([A-Za-z_]\w*)", code)
-    elif suffix.lower() == ".php":
+    if suffix.lower() == ".php":
         names = re.findall(r"\bfunction\s+([A-Za-z_]\w*)", code)
     else:
         names = re.findall(r"\bfunction\s+([A-Za-z_$][\w$]*)|\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=", code)

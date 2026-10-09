@@ -14,7 +14,6 @@ SUPPORTED_SUFFIXES = {
     ".ts": "TypeScript",
     ".tsx": "TypeScript/React",
     ".php": "PHP",
-    ".rs": "Rust",
 }
 
 
@@ -152,9 +151,7 @@ def extract_braced_function(file_path: str, line_number: int) -> FunctionSpan | 
     except OSError:
         return None
     suffix = Path(file_path).suffix.lower()
-    if suffix == ".rs":
-        declaration = re.compile(r"\bfn\s+([A-Za-z_]\w*)")
-    elif suffix == ".php":
+    if suffix == ".php":
         declaration = re.compile(r"\bfunction\s+([A-Za-z_]\w*)")
     else:
         declaration = re.compile(r"(?:\bfunction\s+|\b(?:const|let|var)\s+)([A-Za-z_$][\w$]*)")

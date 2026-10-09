@@ -6,7 +6,7 @@ GhostMode runs a trusted test command, identifies a likely application frame, as
 
 ## Supported languages
 
-GhostMode supports Python, JavaScript, TypeScript, React (`.jsx`/`.tsx`), PHP/Laravel, and Rust. React, Vite, Next.js, Angular, Laravel, and Cargo projects are verified through the test or build command you provide. Python receives AST syntax validation; other languages use conservative structural validation before their own local test/build tools provide final verification.
+GhostMode currently supports Python, JavaScript/React (`.js`, `.jsx`, `.ts`, `.tsx`), and PHP/Laravel. Python receives AST syntax validation; JavaScript/React and PHP use conservative structural validation before their own local test tools provide final verification.
 
 ## Install and run
 
