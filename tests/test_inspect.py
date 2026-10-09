@@ -83,7 +83,8 @@ def test_finds_api_field_mismatches(tmp_path: Path) -> None:
     backend.parent.mkdir()
     frontend.parent.mkdir()
     backend.write_text('return {"page_path": page.path}')
-    frontend.write_text("pages.map((page) => page.path)")
+    frontend.write_text("pages.map((page) => page.path)\npages.map((page) => page.path)")
     findings = inspect_project(tmp_path)
     assert len(findings) == 1
+    assert "Possible field mismatch" in findings[0].message
     assert "backend exposes page_path" in findings[0].message

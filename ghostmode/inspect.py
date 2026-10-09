@@ -214,16 +214,19 @@ def field_mismatches(
     backend_fields: dict[str, tuple[Path, int]], frontend_fields: list[tuple[str, str, Path, int]],
 ) -> list[Finding]:
     findings: list[Finding] = []
+    reported: set[tuple[Path, str]] = set()
     for variable, property_name, path, line in frontend_fields:
         field_name = f"{variable}_{property_name}"
-        if field_name not in backend_fields:
+        key = (path, field_name)
+        if field_name not in backend_fields or key in reported:
             continue
+        reported.add(key)
         findings.append(Finding(
             path,
             line,
             "medium",
             "P2",
-            f"Frontend reads {variable}.{property_name} while the backend exposes {field_name}.",
+            f"Possible field mismatch: frontend reads {variable}.{property_name}, backend exposes {field_name}.",
             "Users can see empty or missing data when the response shape does not match the UI.",
             "Align the API response field and frontend property, then add an integration regression test.",
         ))
