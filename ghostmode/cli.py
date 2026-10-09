@@ -13,11 +13,11 @@ from rich.table import Table
 from .config import Config, load_config
 from .errors import GhostModeError, GuardViolation
 from .guards import TestResult, ensure_safe_path, prepare_test_command, run_tests
-from .inspect import inspect_project
+from .inspect import Finding, inspect_project
 from .llm import OllamaClient
 from .parser import extract_enclosing_function, language_for_path, parse_trace, truncate_log
 from .patcher import FilePatcher, extract_clean_code, matches_target_function, validate_code
-from .prompts import build_prompt
+from .prompts import build_inspection_prompt, build_prompt
 
 app = typer.Typer(add_completion=False, help="Air-gapped, local test repair.")
 console = Console()
@@ -102,6 +102,59 @@ def repair_loop(
     return 1
 
 
+def propose_inspection_fix(
+    finding: Finding,
+    root: Path,
+    test_command: str,
+    config: Config,
+    client: OllamaClient,
+    approve: Callable[[], bool],
+    runner: Callable[[str, int], TestResult] = run_tests,
+) -> int:
+    command = prepare_test_command(test_command, root)
+    baseline = runner(command, config.timeout)
+    if baseline.returncode != 0:
+        console.print("Test command is already failing. Use ghostmode run to repair test failures first.", style="red")
+        return 1
+    target = ensure_safe_path(finding.file, root)
+    span = extract_enclosing_function(str(target), finding.line)
+    if span is None:
+        console.print("Could not find an enclosing function for this finding.", style="red")
+        return 1
+    client.health_check()
+    generated = extract_clean_code(client.generate(
+        build_inspection_prompt(finding.message, finding.impact, finding.suggestion, span.source),
+    ))
+    if not validate_code(generated, target.suffix) or not matches_target_function(generated, span.name, target.suffix):
+        console.print("The local model returned an invalid function replacement.", style="red")
+        return 1
+    original = target.read_text(encoding="utf-8", errors="replace")
+    lines = original.splitlines(keepends=True)
+    preview = "".join(lines[:span.start_line - 1]) + generated + "\n" + "".join(lines[span.end_line:])
+    patcher = FilePatcher()
+    console.print(patcher.diff(original, preview))
+    if not approve():
+        console.print("Proposal not applied.")
+        return 1
+    patcher.backup(target)
+    try:
+        patcher.apply_function_patch(target, span, generated)
+        result = runner(command, config.timeout)
+        if result.returncode != 0:
+            patcher.rollback(target)
+            console.print(Panel("Existing tests failed after the proposal; original file restored.", style="red"))
+            return 1
+        patcher.cleanup(target)
+    except BaseException:
+        patcher.rollback(target)
+        raise
+    console.print(Panel(
+        "Proposal applied and existing tests still pass. Add a regression test to verify the intended behavior.",
+        style="yellow",
+    ))
+    return 0
+
+
 @app.command()
 def run(
     test_cmd: Annotated[str, typer.Argument(help="Trusted command used to run tests")],
@@ -133,7 +186,14 @@ def doctor(model: str | None = None, config: Path | None = None) -> None:
 
 
 @app.command()
-def inspect(path: Path = Path(".")) -> None:
+def inspect(
+    path: Path = Path("."),
+    propose: bool = False,
+    test_cmd: str | None = typer.Option(None, "--test-cmd"),
+    model: str | None = None,
+    yes: bool = False,
+    config: Path | None = None,
+) -> None:
     root = path.resolve()
     if not root.is_dir():
         console.print(f"Directory not found: {root}", style="red")
@@ -161,3 +221,14 @@ def inspect(path: Path = Path(".")) -> None:
         )
     console.print(table)
     console.print("Inspection does not modify files. Add a regression test before using ghostmode run to repair a finding.")
+    if not propose:
+        return
+    if test_cmd is None:
+        console.print("--propose requires --test-cmd so GhostMode can roll back a failed proposal.", style="red")
+        raise typer.Exit(2)
+    priority = {"P1": 0, "P2": 1}
+    finding = min(findings, key=lambda item: priority.get(item.priority, 2))
+    settings = load_config(config).with_overrides(model=model)
+    client = OllamaClient(settings)
+    approved = lambda: yes or typer.confirm("Apply this proposal?")
+    raise typer.Exit(propose_inspection_fix(finding, root, test_cmd, settings, client, approved))

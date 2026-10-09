@@ -13,3 +13,10 @@ def build_prompt(trace: TraceInfo, function: str, log: str, previous: list[str] 
         f"Failing line: {trace.line_number}\n\nFunction to replace:\n{function}\n"
         f"\nTest output:\n{log}\n{attempts}\nReturn only the corrected function."
     )
+
+
+def build_inspection_prompt(finding: str, impact: str, suggestion: str, function: str) -> str:
+    return (
+        f"Inspection finding: {finding}\nPotential impact: {impact}\nSuggested review: {suggestion}\n"
+        f"\nFunction to replace:\n{function}\n\nReturn only the complete corrected function."
+    )

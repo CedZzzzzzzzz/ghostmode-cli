@@ -2,9 +2,10 @@ from pathlib import Path
 
 import httpx
 
-from ghostmode.cli import repair_loop
+from ghostmode.cli import propose_inspection_fix, repair_loop
 from ghostmode.config import Config
 from ghostmode.guards import TestResult as CommandResult
+from ghostmode.inspect import Finding
 from ghostmode.llm import OllamaClient
 
 
@@ -87,3 +88,26 @@ def test_rolls_back_all_progress_when_repair_stalls(tmp_path: Path) -> None:
     assert repair_loop("tests", Config(max_retries=1), False, True, False, tmp_path, client, runner) == 1
     assert source.read_text() == original
     assert not source.with_name("calculator.py.ghost_bak").exists()
+
+
+def test_propose_applies_inspection_fix_when_existing_tests_pass(tmp_path: Path) -> None:
+    source = tmp_path / "analytics.py"
+    source.write_text("def divide(total, count):\n    return total / (count - 1)\n")
+    finding = Finding(source, 2, "medium", "P2", "Suspicious denominator.", "Wrong totals.", "Review it.")
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/tags":
+            return httpx.Response(200, json={"models": [{"name": "qwen2.5-coder:1.5b"}]})
+        if request.url.path == "/api/generate":
+            return httpx.Response(200, json={"response": "def divide(total, count):\n    return total / count"})
+        return httpx.Response(200)
+
+    def runner(command: str, timeout: int) -> CommandResult:
+        del command, timeout
+        return CommandResult(0, "")
+
+    client = OllamaClient(Config(), httpx.Client(transport=httpx.MockTransport(handler)))
+    result = propose_inspection_fix(finding, tmp_path, "tests", Config(), client, lambda: True, runner)
+    assert result == 0
+    assert source.read_text() == "def divide(total, count):\n    return total / count\n"
+    assert not source.with_name("analytics.py.ghost_bak").exists()
