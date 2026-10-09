@@ -1,0 +1,4 @@
+[ghostmode]
+model = "qwen2.5-coder:1.5b"
+timeout = 120
+max_retries = 5

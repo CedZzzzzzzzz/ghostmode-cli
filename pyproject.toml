@@ -1,0 +1,43 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ghostmode-cli"
+version = "0.1.2"
+description = "Air-gapped, local test repair CLI powered by Ollama"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.10"
+dependencies = ["typer>=0.12.0", "rich>=13.7.0", "httpx>=0.27.0"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+]
+
+[project.urls]
+Repository = "https://github.com/CedZzzzzzzzz/ghostmode-cli"
+Issues = "https://github.com/CedZzzzzzzzz/ghostmode-cli/issues"
+
+[project.scripts]
+ghostmode = "ghostmode.cli:app"
+
+[tool.setuptools.packages.find]
+include = ["ghostmode*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "--basetemp=.pytest-run -p no:cacheprovider"
+
+[tool.mypy]
+strict = true
+files = ["ghostmode"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+extend-exclude = [".pytest-tmp", ".pytest-workspace", ".pytest-run"]

@@ -1,0 +1,12 @@
+*.ghost_bak
+.ghostmode/
+__pycache__/
+.venv/
+.mypy_cache/
+.pytest_cache/
+.pytest-tmp/
+.pytest-workspace/
+.pytest-run/
+.package-check/
+build/
+*.egg-info/

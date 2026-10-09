@@ -1,0 +1,2 @@
+E   IndexError: list index out of range
+File "app.py", line 4, in read_value
