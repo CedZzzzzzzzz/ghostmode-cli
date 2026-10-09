@@ -56,3 +56,44 @@ def test_resolves_imported_function_from_test_assertion(tmp_path: Path) -> None:
     assert info is not None
     assert info.failed_file == str(source)
     assert info.function_name == "power"
+
+
+def test_parses_syntax_error_source_frame(tmp_path: Path) -> None:
+    source = tmp_path / "calculator.py"
+    source.write_text("def divide(a, b):\n    if b = 0:\n        return 0\n")
+    test_file = tmp_path / "test_calculator.py"
+    trace = (
+        f"{test_file}:2: in <module>\n"
+        f'    from calculator import divide\nFile "{source}", line 2\n'
+        "    if b = 0:\n       ^^^^^\nSyntaxError: invalid syntax"
+    )
+    info = parse_trace(trace)
+    assert info is not None
+    assert info.failed_file == str(source)
+    assert info.line_number == 2
+    assert info.error_type == "SyntaxError"
+    span = extract_enclosing_function(str(source), info.line_number)
+    assert span is not None
+    assert span.name == "divide"
+
+
+def test_parses_typescript_syntax_error_frame(tmp_path: Path) -> None:
+    source = tmp_path / "total.ts"
+    source.write_text("export function total(value: number) {\n  return value + ;\n}\n")
+    info = parse_trace(f"{source}:2:18 - error TS1109: Expression expected.")
+    assert info is not None
+    assert info.failed_file == str(source)
+    span = extract_enclosing_function(str(source), info.line_number)
+    assert span is not None
+    assert span.name == "total"
+
+
+def test_parses_php_syntax_error_frame(tmp_path: Path) -> None:
+    source = tmp_path / "Calculator.php"
+    source.write_text("<?php\nfunction divide($a, $b) {\n    return $a / ;\n}\n")
+    info = parse_trace(f"PHP Parse error: syntax error in {source} on line 3")
+    assert info is not None
+    assert info.failed_file == str(source)
+    span = extract_enclosing_function(str(source), info.line_number)
+    assert span is not None
+    assert span.name == "divide"

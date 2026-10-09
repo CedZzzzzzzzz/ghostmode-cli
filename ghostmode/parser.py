@@ -51,6 +51,7 @@ def language_for_path(file_path: str | Path) -> str | None:
 
 def parse_trace(test_output: str) -> TraceInfo | None:
     frames = re.findall(r'File "([^"]+)", line (\d+), in ([^\n]+)', test_output)
+    frames += [(path, line, "") for path, line in re.findall(r'File "([^"]+)", line (\d+)', test_output)]
     frames += [(path, line, "") for path, line in re.findall(r"([\w./\\-]+\.py):(\d+):", test_output)]
     suffixes = "|".join(re.escape(item) for item in SUPPORTED_SUFFIXES)
     pattern = rf"([^\s()]+(?:{suffixes})):(\d+)(?::\d+)?"
@@ -88,8 +89,10 @@ def extract_enclosing_function(file_path: str, line_number: int) -> FunctionSpan
     try:
         source = Path(file_path).read_text(encoding="utf-8", errors="replace")
         tree = ast.parse(source)
-    except (OSError, SyntaxError):
+    except OSError:
         return None
+    except SyntaxError:
+        return extract_indented_python_function(source, line_number)
     matches: list[ast.FunctionDef | ast.AsyncFunctionDef] = []
     for node in ast.walk(tree):
         if (
@@ -105,6 +108,27 @@ def extract_enclosing_function(file_path: str, line_number: int) -> FunctionSpan
         return None
     lines = source.splitlines(keepends=True)
     return FunctionSpan("".join(lines[node.lineno - 1:node.end_lineno]), node.lineno, node.end_lineno, node.name)
+
+
+def extract_indented_python_function(source: str, line_number: int) -> FunctionSpan | None:
+    lines = source.splitlines(keepends=True)
+    declaration = re.compile(r"^(\s*)(?:async\s+)?def\s+([A-Za-z_]\w*)\s*\(")
+    start = -1
+    name = ""
+    indent = 0
+    for index in range(min(line_number - 1, len(lines) - 1), -1, -1):
+        match = declaration.match(lines[index])
+        if match is not None:
+            start, name, indent = index, match.group(2), len(match.group(1))
+            break
+    if start < 0:
+        return None
+    end = len(lines)
+    for index in range(start + 1, len(lines)):
+        if lines[index].strip() and len(lines[index]) - len(lines[index].lstrip()) <= indent:
+            end = index
+            break
+    return FunctionSpan("".join(lines[start:end]), start + 1, end, name)
 
 
 def resolve_test_target(test_file: Path, line_number: int) -> tuple[str, int, str] | None:
