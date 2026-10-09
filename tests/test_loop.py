@@ -2,7 +2,7 @@ from pathlib import Path
 
 import httpx
 
-from ghostmode.cli import propose_inspection_fix, repair_loop
+from ghostmode.cli import generate_regression_test, propose_inspection_fix, repair_loop
 from ghostmode.config import Config
 from ghostmode.guards import TestResult as CommandResult
 from ghostmode.inspect import Finding
@@ -111,3 +111,120 @@ def test_propose_applies_inspection_fix_when_existing_tests_pass(tmp_path: Path)
     assert result == 0
     assert source.read_text() == "def divide(total, count):\n    return total / count\n"
     assert not source.with_name("analytics.py.ghost_bak").exists()
+
+
+def test_propose_dry_run_does_not_edit_source(tmp_path: Path) -> None:
+    source = tmp_path / "analytics.py"
+    original = "def divide(total, count):\n    return total / (count - 1)\n"
+    source.write_text(original)
+    finding = Finding(source, 2, "medium", "P2", "Suspicious denominator.", "Wrong totals.", "Review it.")
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/tags":
+            return httpx.Response(200, json={"models": [{"name": "qwen2.5-coder:1.5b"}]})
+        if request.url.path == "/api/generate":
+            return httpx.Response(200, json={"response": "def divide(total, count):\n    return total / count"})
+        return httpx.Response(200)
+
+    client = OllamaClient(Config(), httpx.Client(transport=httpx.MockTransport(handler)))
+
+    def runner(command: str, timeout: int) -> CommandResult:
+        del command, timeout
+        return CommandResult(0, "")
+
+    result = propose_inspection_fix(
+        finding,
+        tmp_path,
+        "tests",
+        Config(),
+        client,
+        lambda: True,
+        runner,
+        dry_run=True,
+    )
+    assert result == 0
+    assert source.read_text() == original
+
+
+def test_propose_can_verify_a_failing_regression_test(tmp_path: Path) -> None:
+    source = tmp_path / "analytics.py"
+    source.write_text("def divide(total, count):\n    return total / (count - 1)\n")
+    finding = Finding(source, 2, "medium", "P2", "Suspicious denominator.", "Wrong totals.", "Review it.")
+    results = iter([CommandResult(1, "regression test fails"), CommandResult(0, "")])
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/tags":
+            return httpx.Response(200, json={"models": [{"name": "qwen2.5-coder:1.5b"}]})
+        if request.url.path == "/api/generate":
+            return httpx.Response(200, json={"response": "def divide(total, count):\n    return total / count"})
+        return httpx.Response(200)
+
+    def runner(command: str, timeout: int) -> CommandResult:
+        del command, timeout
+        return next(results)
+
+    client = OllamaClient(Config(), httpx.Client(transport=httpx.MockTransport(handler)))
+    result = propose_inspection_fix(finding, tmp_path, "tests", Config(), client, lambda: True, runner)
+    assert result == 0
+    assert source.read_text() == "def divide(total, count):\n    return total / count\n"
+
+
+def test_generates_a_failing_regression_test(tmp_path: Path) -> None:
+    source = tmp_path / "analytics.py"
+    source.write_text("def divide(total, count):\n    return total / (count - 1)\n")
+    finding = Finding(source, 2, "medium", "P2", "Suspicious denominator.", "Wrong totals.", "Review it.")
+    results = iter([CommandResult(0, ""), CommandResult(1, "regression test fails")])
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/tags":
+            return httpx.Response(200, json={"models": [{"name": "qwen2.5-coder:1.5b"}]})
+        if request.url.path == "/api/generate":
+            return httpx.Response(
+                200,
+                json={"response": "from analytics import divide\n\ndef test_divide():\n    assert divide(6, 3) == 2\n"},
+            )
+        return httpx.Response(200)
+
+    def runner(command: str, timeout: int) -> CommandResult:
+        del command, timeout
+        return next(results)
+
+    client = OllamaClient(Config(), httpx.Client(transport=httpx.MockTransport(handler)))
+    result = generate_regression_test(finding, tmp_path, "tests", Config(), client, lambda: True, runner)
+    test_file = tmp_path / "tests" / "test_ghostmode_analytics_2.py"
+    assert result == 0
+    assert test_file.exists()
+
+
+def test_retries_invalid_regression_test_response(tmp_path: Path) -> None:
+    source = tmp_path / "analytics.py"
+    source.write_text("def divide(total, count):\n    return total / (count - 1)\n")
+    finding = Finding(source, 2, "medium", "P2", "Suspicious denominator.", "Wrong totals.", "Review it.")
+    responses = iter([
+        "This is not test code.",
+        "from analytics import divide\n\ndef test_divide():\n    assert divide(6, 3) == 2\n",
+    ])
+    results = iter([CommandResult(0, ""), CommandResult(1, "regression test fails")])
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/tags":
+            return httpx.Response(200, json={"models": [{"name": "qwen2.5-coder:1.5b"}]})
+        if request.url.path == "/api/generate":
+            return httpx.Response(200, json={"response": next(responses)})
+        return httpx.Response(200)
+
+    def runner(command: str, timeout: int) -> CommandResult:
+        del command, timeout
+        return next(results)
+
+    client = OllamaClient(Config(max_retries=2), httpx.Client(transport=httpx.MockTransport(handler)))
+    result = generate_regression_test(
+        finding,
+        tmp_path,
+        "tests",
+        Config(max_retries=2),
+        client,
+        lambda: True,
+        runner,
+    )
+    assert result == 0

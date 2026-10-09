@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ghostmode-cli"
-version = "0.1.6"
+version = "0.1.7"
 description = "Air-gapped, local test repair CLI powered by Ollama"
 readme = "README.md"
 license = "MIT"
@@ -31,7 +31,7 @@ include = ["ghostmode*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "--basetemp=.pytest-run -p no:cacheprovider"
+addopts = "-p no:cacheprovider"
 
 [tool.mypy]
 strict = true

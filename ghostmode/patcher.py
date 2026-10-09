@@ -52,8 +52,11 @@ def matches_target_function(code: str, function_name: str, suffix: str) -> bool:
             tree = ast.parse(code)
         except SyntaxError:
             return False
-        functions = [node.name for node in tree.body if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))]
-        return functions == [function_name]
+        return (
+            len(tree.body) == 1
+            and isinstance(tree.body[0], (ast.FunctionDef, ast.AsyncFunctionDef))
+            and tree.body[0].name == function_name
+        )
     if suffix.lower() == ".php":
         names = re.findall(r"\bfunction\s+([A-Za-z_]\w*)", code)
     else:
@@ -84,14 +87,17 @@ class FilePatcher:
     def apply_fix(self, file_path: Path, new_code: str) -> None:
         if not validate_code(new_code, file_path.suffix):
             raise PatchError("Refusing to write structurally invalid code")
-        mode = stat.S_IMODE(file_path.stat().st_mode)
-        newline = "\r\n" if b"\r\n" in file_path.read_bytes() else "\n"
+        original = file_path.read_bytes() if file_path.exists() else b""
+        mode = stat.S_IMODE(file_path.stat().st_mode) if file_path.exists() else None
+        newline = "\r\n" if b"\r\n" in original else "\n"
         payload = new_code.replace("\r\n", "\n").replace("\n", newline).encode("utf-8")
+        file_path.parent.mkdir(parents=True, exist_ok=True)
         descriptor, temporary = tempfile.mkstemp(prefix=".ghostmode-", dir=file_path.parent)
         try:
             with os.fdopen(descriptor, "wb") as handle:
                 handle.write(payload)
-            os.chmod(temporary, mode)
+            if mode is not None:
+                os.chmod(temporary, mode)
             os.replace(temporary, file_path)
         except OSError as error:
             Path(temporary).unlink(missing_ok=True)

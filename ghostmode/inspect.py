@@ -76,7 +76,11 @@ def inspect_python(path: Path, lines: list[str], source: str) -> list[Finding]:
                 "Validate the value before parsing it and return a clear client error when it is missing.",
             ))
         parsed = re.search(r"\b(?:date|datetime)\.fromisoformat\(\s*([A-Za-z_]\w*)\s*\)", line)
-        if parsed is not None and parsed.group(1) in optional_values:
+        if (
+            parsed is not None
+            and parsed.group(1) in optional_values
+            and not has_none_guard(lines, index, parsed.group(1))
+        ):
             findings.append(Finding(
                 path,
                 index,
@@ -179,6 +183,22 @@ def optional_date_values(lines: list[str]) -> set[str]:
         if assigned is not None:
             values.add(assigned.group(1))
     return values
+
+
+def has_none_guard(lines: list[str], line_number: int, value: str) -> bool:
+    function_start = 0
+    for index in range(line_number - 2, -1, -1):
+        if re.match(r"\s*(?:async\s+)?def\s+", lines[index]):
+            function_start = index
+            break
+    guard = re.compile(rf"\bif\b.*\b{re.escape(value)}\s+is\s+None\b")
+    for index in range(function_start, line_number - 1):
+        if guard.search(lines[index]) is None:
+            continue
+        guard_block = "\n".join(lines[index:min(index + 5, line_number - 1)])
+        if re.search(r"\b(?:return|raise)\b", guard_block):
+            return True
+    return False
 
 
 def effect_ranges(lines: list[str]) -> list[tuple[int, int]]:

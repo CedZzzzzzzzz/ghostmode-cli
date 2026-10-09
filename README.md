@@ -42,13 +42,13 @@ ghostmode inspect
 
 Each finding includes severity, repair priority, and potential impact so developers can review the most harmful risks first.
 
-Ask the local model to propose one high-priority inspection fix and verify that existing tests still pass:
+Ask the local model to propose one high-priority inspection fix:
 
 ```bash
 ghostmode inspect --propose --test-cmd "pytest -q"
 ```
 
-GhostMode asks before applying the proposal. Passing existing tests does not prove the finding is fixed; add a regression test for that behavior.
+GhostMode asks before applying the proposal. For stronger verification, add a regression test first: GhostMode can apply the proposal only when that failing test turns green.
 
 Use `--dry-run` to review a diff without changing files. GhostMode never edits tests unless `--allow-test-edits` is explicitly passed.
 For Vitest projects, `ghostmode run "npm test"` automatically uses single-run mode instead of watch mode.

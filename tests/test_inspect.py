@@ -60,6 +60,19 @@ def test_finds_optional_date_and_ratio_risks(tmp_path: Path) -> None:
     assert any("bounce metric" in message for message in messages)
 
 
+def test_does_not_report_optional_dates_with_a_guard(tmp_path: Path) -> None:
+    source = (
+        "def parse(start_date: str | None, end_date: str | None):\n"
+        "    if start_date is None or end_date is None:\n"
+        "        return None, None\n"
+        "    start = date.fromisoformat(start_date)\n"
+        "    end = date.fromisoformat(end_date)\n"
+        "    return start, end\n"
+    )
+    findings = inspect_source(tmp_path / "analytics.py", source)
+    assert findings == []
+
+
 def test_finds_loading_and_duplicate_effect_risks(tmp_path: Path) -> None:
     source = (
         "useEffect(() => {\n"
